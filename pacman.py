@@ -1,7 +1,29 @@
-#Pacman in Python with PyGame
-#https://github.com/hbokmann/Pacman
+"""
+Jacob Stallings
+Oct 6, 2021
+
+Modified PyGame implementation of Pacman as part of EA's Virtual Internship Experience program.
+Forked from https://github.com/hbokmann/Pacman
+Edits were made to the original implementation to make a new game, "Vaxman" according to these rules:
+
+To recap, we are building a new game called Vax-Man. The rules are similar to Pac-Man with several notable exceptions:
+
+Vax-Man can kill a ghost if he comes into contact with it (vaccinates it).
+Contact with a ghost does not kill Vax-Man.
+Each ghost that has not yet been hit multiplies itself every 30 seconds (the infection grows).
+The goal of the game is to collect all the dots before the number of ghosts grows to 32 times the original number.
+
+The changes to the code were made with the goal of accomodating this new logic. 
+You can see the original pacman.py file at the original linked location to compare changes.
+
+"""
   
-import pygame._view
+import pygame
+import random
+
+from pygame.event import get
+
+GHOST_LIMIT = 4*32
   
 black = (0,0,0)
 white = (255,255,255)
@@ -198,30 +220,39 @@ class Player(pygame.sprite.Sprite):
             self.rect.top=old_y
 
 #Inheritime Player klassist
+# We let each ghost (clone) keep track of its own turn & steps, basically where it is.
 class Ghost(Player):
+
+    def __init__(self, x, y, filename, name):
+        super().__init__(x, y, filename)
+        self.name = name
+        self.turn = 0
+        self.steps = 0
+        
     # Change the speed of the ghost
-    def changespeed(self,list,ghost,turn,steps,l):
+    def changespeed(self,list,ghost,l):
       try:
-        z=list[turn][2]
-        if steps < z:
-          self.change_x=list[turn][0]
-          self.change_y=list[turn][1]
-          steps+=1
+        z=list[self.turn][2]
+        if self.steps < z:
+          self.change_x=list[self.turn][0]
+          self.change_y=list[self.turn][1]
+          self.steps+=1
         else:
-          if turn < l:
-            turn+=1
-          elif ghost == "clyde":
-            turn = 2
+          if self.turn < l:
+            self.turn+=1
+          elif ghost == "Clyde":
+            self.turn = 2
           else:
-            turn = 0
-          self.change_x=list[turn][0]
-          self.change_y=list[turn][1]
-          steps = 0
-        return [turn,steps]
+            self.turn = 0
+          self.change_x=list[self.turn][0]
+          self.change_y=list[self.turn][1]
+          self.steps = 0
+        return [self.turn,self.steps]
       except IndexError:
          return [0,0]
 
-Pinky_directions = [
+directions = {
+  "Pinky": [
 [0,-30,4],
 [15,0,9],
 [0,15,11],
@@ -240,9 +271,8 @@ Pinky_directions = [
 [-15,0,19],
 [0,-15,11],
 [15,0,9]
-]
-
-Blinky_directions = [
+] , 
+"Blinky": [
 [0,-15,4],
 [15,0,9],
 [0,15,11],
@@ -271,9 +301,9 @@ Blinky_directions = [
 [-15,0,11],
 [0,-15,7],
 [15,0,5]
-]
+],
 
-Inky_directions = [
+"Inky": [
 [30,0,2],
 [0,-15,4],
 [15,0,10],
@@ -305,9 +335,9 @@ Inky_directions = [
 [15,0,11],
 [0,15,3],
 [15,0,1],
-]
+],
 
-Clyde_directions = [
+"Clyde": [
 [-30,0,2],
 [0,-15,4],
 [15,0,5],
@@ -327,10 +357,30 @@ Clyde_directions = [
 [15,0,9],
 ]
 
-pl = len(Pinky_directions)-1
-bl = len(Blinky_directions)-1
-il = len(Inky_directions)-1
-cl = len(Clyde_directions)-1
+
+}
+
+# Refactoring things so that ghost name is no longer hard coded
+def get_length_directions(ghost_name):
+  return len(directions[ghost_name]) - 1
+
+
+def update_ghosts(ghost_list, wall_list):
+  for ghost in ghost_list:
+    if ghost.name == "Clyde":
+      is_Clyde = "Clyde" # The original code passes either False or "Clyde" to changespeed()
+    else:
+      is_Clyde = False
+
+    # The random part is so clones don't get stacked up on each other (so you can see them)
+    ghost.changespeed(directions[ghost.name],is_Clyde,get_length_directions(ghost.name))
+    if random.randint(0,1) == 1 :
+      ghost.changespeed(directions[ghost.name],is_Clyde,get_length_directions(ghost.name))
+
+    ghost.update(wall_list,False)
+    
+
+
 
 # Call this function so the Pygame library can initialize itself
 pygame.init()
@@ -383,18 +433,23 @@ def startGame():
 
   gate = setupGate(all_sprites_list)
 
+  last_tick = pygame.time.get_ticks()
 
-  p_turn = 0
-  p_steps = 0
+  num_ghosts = 0
 
-  b_turn = 0
-  b_steps = 0
+  widths = {
+    "Blinky": w,
+    "Pinky" : w,
+    "Inky" : i_w,
+    "Clyde" : c_w
+  }
 
-  i_turn = 0
-  i_steps = 0
-
-  c_turn = 0
-  c_steps = 0
+  heights = {
+    "Blinky" : b_h,
+    "Pinky" : m_h,
+    "Inky" : m_h,
+    "Clyde" : m_h
+  }
 
 
   # Create the player paddle object
@@ -402,19 +457,19 @@ def startGame():
   all_sprites_list.add(Pacman)
   pacman_collide.add(Pacman)
    
-  Blinky=Ghost( w, b_h, "images/Blinky.png" )
+  Blinky=Ghost( w, b_h, "images/Blinky.png", "Blinky" )
   monsta_list.add(Blinky)
   all_sprites_list.add(Blinky)
 
-  Pinky=Ghost( w, m_h, "images/Pinky.png" )
+  Pinky=Ghost( w, m_h, "images/Pinky.png" , "Pinky")
   monsta_list.add(Pinky)
   all_sprites_list.add(Pinky)
    
-  Inky=Ghost( i_w, m_h, "images/Inky.png" )
+  Inky=Ghost( i_w, m_h, "images/Inky.png" , "Inky")
   monsta_list.add(Inky)
   all_sprites_list.add(Inky)
    
-  Clyde=Ghost( c_w, m_h, "images/Clyde.png" )
+  Clyde=Ghost( c_w, m_h, "images/Clyde.png" , "Clyde")
   monsta_list.add(Clyde)
   all_sprites_list.add(Clyde)
 
@@ -480,29 +535,7 @@ def startGame():
       # ALL GAME LOGIC SHOULD GO BELOW THIS COMMENT
       Pacman.update(wall_list,gate)
 
-      returned = Pinky.changespeed(Pinky_directions,False,p_turn,p_steps,pl)
-      p_turn = returned[0]
-      p_steps = returned[1]
-      Pinky.changespeed(Pinky_directions,False,p_turn,p_steps,pl)
-      Pinky.update(wall_list,False)
-
-      returned = Blinky.changespeed(Blinky_directions,False,b_turn,b_steps,bl)
-      b_turn = returned[0]
-      b_steps = returned[1]
-      Blinky.changespeed(Blinky_directions,False,b_turn,b_steps,bl)
-      Blinky.update(wall_list,False)
-
-      returned = Inky.changespeed(Inky_directions,False,i_turn,i_steps,il)
-      i_turn = returned[0]
-      i_steps = returned[1]
-      Inky.changespeed(Inky_directions,False,i_turn,i_steps,il)
-      Inky.update(wall_list,False)
-
-      returned = Clyde.changespeed(Clyde_directions,"clyde",c_turn,c_steps,cl)
-      c_turn = returned[0]
-      c_steps = returned[1]
-      Clyde.changespeed(Clyde_directions,"clyde",c_turn,c_steps,cl)
-      Clyde.update(wall_list,False)
+      update_ghosts(monsta_list, wall_list)
 
       # See if the Pacman block has collided with anything.
       blocks_hit_list = pygame.sprite.spritecollide(Pacman, block_list, True)
@@ -510,6 +543,27 @@ def startGame():
       # Check the list of collisions.
       if len(blocks_hit_list) > 0:
           score +=len(blocks_hit_list)
+
+      # Kill ghosts
+      monsta_hit_list = pygame.sprite.spritecollide(Pacman, monsta_list, True)
+      
+      # Keep track that we killed this many ghosts
+      num_ghosts -= len(monsta_hit_list)
+
+
+
+      # Generate clones if 30 seconds have passed
+      new_tick = pygame.time.get_ticks()
+      if new_tick - last_tick >= 30000:
+        last_tick = new_tick
+        # Clone ghosts
+        for ghost in monsta_list:
+          clone = Ghost(widths[ghost.name], heights[ghost.name], "images/" + ghost.name + ".png", ghost.name)
+          monsta_list.add(clone)
+          all_sprites_list.add(clone)
+          
+        # Keep track of number of ghosts
+        num_ghosts = len(monsta_list)
       
       # ALL GAME LOGIC SHOULD GO ABOVE THIS COMMENT
    
@@ -524,13 +578,12 @@ def startGame():
       text=font.render("Score: "+str(score)+"/"+str(bll), True, red)
       screen.blit(text, [10, 10])
 
-      if score == bll:
+      if num_ghosts >= GHOST_LIMIT:
+        doNext("Game Over",235,all_sprites_list,block_list,monsta_list,pacman_collide,wall_list,gate)
+
+      elif score == bll:
         doNext("Congratulations, you won!",145,all_sprites_list,block_list,monsta_list,pacman_collide,wall_list,gate)
 
-      monsta_hit_list = pygame.sprite.spritecollide(Pacman, monsta_list, False)
-
-      if monsta_hit_list:
-        doNext("Game Over",235,all_sprites_list,block_list,monsta_list,pacman_collide,wall_list,gate)
 
       # ALL CODE TO DRAW SHOULD GO ABOVE THIS COMMENT
       
